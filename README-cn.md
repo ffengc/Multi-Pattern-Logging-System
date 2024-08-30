@@ -20,7 +20,7 @@ C++ version of synchronous &amp; asynchronous logging system based on multiple d
 - 支持多线程程序并发写日志
 - 支持扩展不同的日志落地目标地
 
-核心技术栈: 类层次设计（继承和多态）、C++11（多线程、右值引用等）、双缓冲区、生产者消费者模型、多线程、设计模式（单例、工厂代理、建造者等）
+核心技术栈: 类层次设计（继承和多态）、C++11（多线程、右值引用等）、双缓冲区、生产者消费者模型、多线程、设计模式（单例、工厂代理、建造者等）、GTest测试框架
 
 
 > [!WARNING]
@@ -35,4 +35,4 @@ C++ version of synchronous &amp; asynchronous logging system based on multiple d
 ## 一些想法
 
 - 封装成库
-- 了解下如何封装成其他语言的接口，比如 Python 和 C#，可以尝试一下。看看是否能在 Python/C# 里面调用库使用这个日志系统
+- 了解下如何封装成其他语言的接口，比如 Python 和 C#，可以尝试一下。看看是否能在 Python/C# 里面调用库使用这个日志系统。
