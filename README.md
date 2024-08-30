@@ -18,7 +18,7 @@ This project is mainly to implement a log system, which mainly supports the foll
 - Support multi-threaded programs to write logs concurrently
 - Support the expansion of different log landing destinations
 
-Core technology stack: class hierarchy design (inheritance and polymorphism), C++11 (multi-threading, right value references, etc.), double buffer, producer consumer model, multi-threading, design pattern (singleton, factory proxy, builder, etc.)
+Core technology stack: class hierarchy design (inheritance and polymorphism), C++11 (multi-threading, right value references, etc.), double buffer, producer consumer model, multi-threading, design pattern (singleton, factory proxy, builder, etc.), GTest
 
 > [!WARNING]
 > **This is a component-based project, not a business-based project, and it will eventually be used by others.**
@@ -32,4 +32,4 @@ To complete this project, I used a document to supplement the detailed explanati
 ## Some ideas
 
 - Encapsulate into a library
-- Understand how to encapsulate into interfaces of other languages, such as Python and C#, and try it. See if you can call the library in Python/C# to use this log system
+- Understand how to encapsulate into interfaces of other languages, such as Python and C#, and try it. See if you can call the library in Python/C# to use this log system.

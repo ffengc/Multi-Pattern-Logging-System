@@ -9,6 +9,8 @@
     - [六大原则](#六大原则)
     - [单例模式](#单例模式)
     - [工厂模式](#工厂模式)
+    - [建造者模式](#建造者模式)
+    - [代理模式](#代理模式)
 
 本文档的所有相关代码都存放在 `./demo` 中。
 
@@ -220,3 +222,145 @@ int main() {
 }
 ```
 这个就是工厂方法的简单代码。
+
+工厂方法模式每次增加一个产品时，都需要增加一个具体产品类和工厂类，这会使得系统中类的个数成倍增加，在一定程度上增加了系统的耦合度。
+
+**第三种方式：抽象工厂模式**
+
+工厂方法模式通过引入工厂等级结构，解决了简单工厂模式中工厂类职责太重的问题，但由于工厂方法模式中的每个工厂只生产一类产品，可能会导致系统中存在大量的工厂类，势必会增加系统的开销。此时，我们可以考虑将一些相关的产品组成一个产品族（位于不同产品等级结构中功能相关联的产品组成的家族），由同一个工厂来统一生产，这就是抽象工厂模式的基本思想。
+
+
+```cpp
+class Factory {
+public:
+    virtual std::shared_ptr<Fruit> getFruit(const std::string& name) = 0;
+    virtual std::shared_ptr<Animal> getAnimal(const std::string& name) = 0;
+};
+class FruitFactory : public Factory {
+public:
+    std::shared_ptr<Animal> getAnimal(const std::string& name) { return std::shared_ptr<Animal>(); }
+    std::shared_ptr<Fruit> getFruit(const std::string& name) {
+        if (name == "apple")
+            return std::make_shared<Apple>();
+        else
+            return std::make_shared<Banana>();
+    }
+};
+class AnimalFactory : public Factory {
+public:
+    std::shared_ptr<Fruit> getFruit(const std::string& name) { return std::shared_ptr<Fruit>(); }
+    std::shared_ptr<Animal> getAnimal(const std::string& name) {
+        if (name == "dog")
+            return std::make_shared<Dog>();
+        else
+            return std::make_shared<Lamp>();
+    }
+};
+class FactoryProducer {
+public:
+    static std::shared_ptr<Factory> create(const std::string& name) {
+        if (name == "fruit")
+            return std::make_shared<FruitFactory>();
+        else
+            return std::make_shared<AnimalFactory>();
+    }
+};
+int main() {
+    std::shared_ptr<Factory> ff = FactoryProducer::create("fruit");
+    std::shared_ptr<Fruit> fruit = ff->getFruit("apple");
+    fruit->name();
+    fruit = ff->getFruit("banana");
+    fruit->name();
+
+    ff = FactoryProducer::create("animal");
+    std::shared_ptr<Animal> animal = ff->getAnimal("dog");
+    animal->name();
+    animal = ff->getAnimal("lamp");
+    animal->name();
+    return 0;
+}
+```
+
+
+### 建造者模式
+
+建造者模式是一种创建型设计模式，使用多个简单对象一步一步构建成一个复杂对象，能够将一个复杂的对象的构建与它的表示进行分离，提供了一种创建对象的最佳方式。
+
+建造者模式主要基于4个核心类实现：
+- 抽象产品类
+- 具体产品类
+- 抽象 `Builder` 类：创建一个产品对象所需的各个部件的抽象接口
+- 具体产品的 `Builder` 类：实现抽象接口，构建各个部件
+- 指挥者 `Director` 类：统一组建过程，提供给调用者使用，通过指挥者来构造产品
+
+示例代码如下所示:
+```cpp
+#include <iostream>
+#include <memory>
+#include <string>
+
+class Computer {
+protected:
+    std::string __board;
+    std::string __display;
+    std::string __os; //
+public:
+    Computer() = default;
+    void setBoard(const std::string& name) { __board = name; }
+    void setDisplay(const std::string& name) { __display = name; }
+    virtual void setOS() = 0;
+    std::string toString() {
+        std::string param = "Computer Paramaters: \n";
+        param += "\tBoard: " + __board + "\n";
+        param += "\tDisplay: " + __display + "\n";
+        param += "\tOs: " + __os + "\n";
+        return param;
+    }
+};
+class Macbook : public Computer {
+public:
+    void setOS() override { __os = "Mac OS X12"; }
+};
+class Builder {
+public:
+    virtual void buildBoard(const std::string& board) = 0;
+    virtual void buildDisplay(const std::string& display) = 0;
+    virtual void buildOS() = 0;
+    virtual std::shared_ptr<Computer> build() = 0;
+};
+class MacbookBuilder : public Builder {
+private:
+    std::shared_ptr<Computer> __computer; //
+public:
+    MacbookBuilder()
+        : __computer(new Macbook()) { }
+    virtual void buildBoard(const std::string& board) { __computer->setBoard(board); }
+    virtual void buildDisplay(const std::string& display) { __computer->setDisplay(display); }
+    virtual void buildOS() { __computer->setOS(); }
+    std::shared_ptr<Computer> build() { return __computer; }
+};
+class Director {
+private:
+    std::shared_ptr<Builder> __builder; //
+public:
+    Director(Builder* builder)
+        : __builder(builder) { }
+    void construct(const std::string& board, const std::string& display) {
+        __builder->buildBoard(board);
+        __builder->buildDisplay(display);
+        __builder->buildOS();
+    }
+};
+int main() {
+    Builder* builder = new MacbookBuilder();
+    std::unique_ptr<Director> director(new Director(builder));
+    director->construct("Huashuo", "Apple");
+    std::shared_ptr<Computer> computer = builder->build();
+    std::cout << computer->toString();
+    return 0;
+}
+```
+
+### 代理模式
+
+这个代理的概念和网络里面的代理概念是相同的，这里不赘述了。
