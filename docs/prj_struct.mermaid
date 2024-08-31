@@ -1,0 +1,43 @@
+classDiagram
+    class logger{
+        -String __logger_name;
+        -std::atomic<logLevel::value> __limit_level; "Limit the level of log output"
+        -formatter::ptr __formatter;
+        -std::vector<logSink::ptr> __sinks;
+        -std::mutex __mtx;
+        +void debug(...);
+        +void info(...);
+        +void warning(...);
+        +void error(...);
+        +void fatal(...);
+        -virtual void log(...);
+    }
+    class logLevel-value{
+        +UNKNOW = 0,
+        +DEBUG,
+        +INFO,
+        +WARNING,
+        +ERROR,
+        +FATAL,
+        +OFF  
+    }
+    class syncLogger {
+        -void log(...) override
+    }
+    class asyncLogger {
+        -void log(...) override
+        -other_functions()
+    }
+    syncLogger --|> logger
+    asyncLogger --|> logger
+    class logMessage {
+        +time_t __ctime; "// Timestamp of when the log was generated"
+        +logLevel::value __level; "// Log Level"
+        +size_t __line; "// line number"
+        +std::thread::id __tid; "// thread_id"
+        +std::string __file; "// file name"
+        +std::string __logger; "// logger name"
+        +std::string __payload; "// message"
+    }
+    syncLogger --> logMessage : uses
+    asyncLogger --> logMessage : uses

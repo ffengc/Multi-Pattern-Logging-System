@@ -22,6 +22,7 @@ C++ version of synchronous &amp; asynchronous logging system based on multiple d
 
 核心技术栈: 类层次设计（继承和多态）、C++11（多线程、右值引用等）、双缓冲区、生产者消费者模型、多线程、设计模式（单例、工厂代理、建造者等）、GTest测试框架
 
+![](./assets/1.png)
 
 > [!WARNING]
 > **这个是一个组件型的项目，不是业务型的项目，最后是需要给别人去用的。**
