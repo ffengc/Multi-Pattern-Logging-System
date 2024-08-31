@@ -106,6 +106,7 @@ private:
     std::string __pattern; // 格式化规则字符串
     std::vector<formatItem::ptr> __items; //
 public:
+    using ptr = std::shared_ptr<formatter>;
     formatter(const std::string& pattern = "[%d{%H:%M:%S}][%t][%c][%f:%l][%p]%T%m%n")
         : __pattern(pattern) {
         assert(parsePattern());

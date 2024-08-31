@@ -6,6 +6,8 @@
   - [日志等级模块](#日志等级模块)
   - [日志消息类](#日志消息类)
   - [消息格式化模块](#消息格式化模块)
+  - [日志落地模块设计（工厂模式）](#日志落地模块设计工厂模式)
+  - [日志器模块（建造者模式）](#日志器模块建造者模式)
 
 ## 框架设计
 
@@ -194,4 +196,127 @@ struct logMessage {
 | `OtherFormatItem`  | 表示非格式化的原始字符串             |
 
 具体实现见代码所示。
+
+## 日志落地模块设计（工厂模式）
+
+其实功能是很好理解的，就是把格式化完成后的日志消息字符串，输出到指定的位置。
+
+> [!TIP]
+> 这里可以扩展：支持同时将日志落地到不同的位置
+
+位置分类:
+- 标准输出
+- 指定文件（事后进行日志分析）
+- 滚动文件（文件按照时间/大小进行滚动切换）
+  - 日志文件滚动的条件可以选择：大小和时间
+  - 日志文件在大于1GB的时候会更换新的文件
+  - 每天定点滚动一个日志文件
+
+当然，也支持用户自己编写一个新的落地模块，将日志进行其他方向的落地
+
+实现思想：使用工厂模式进行创建与表示的分离。
+
+具体实现可以见代码。下面放一些代码细节的tips
+
+***
+
+这里如何设计？为了让代码的扩展性更好，所以不应该用 `create()` 参数来控制sink的类型，而是使用模版
+```cpp
+template<typename SinkType>
+class sinkFactory {
+public:
+    static logSink::ptr create() {
+        return std::make_shared<SinkType>();
+    }
+};
+```
+
+但是这里会遇到一个问题，不同sink类的构造是需要不同个数的参数的，这个怎么办？这句话怎么写？`return std::make_shared<SinkType>();`
+
+**所以这里就要用到不定参函数了！**
+
+```cpp
+class sinkFactory {
+public:
+    template <typename SinkType, typename... Args>
+    static logSink::ptr create(Args&&... args) {
+        return std::make_shared<SinkType>(std::forward<Args>(args)...);
+    }
+};
+```
+
+进行测试:
+
+```cpp
+TEST(all_test, sink_basic_test) {
+    ffengc_log::logMessage msg(ffengc_log::logLevel::value::INFO,
+        53,
+        "main.c",
+        "root",
+        "fmt test...");
+    ffengc_log::formatter fmt("abc%%abc[%d{%H:%M:%S}] %m%n");
+    std::string str = fmt.format(msg);
+    ffengc_log::logSink::ptr stdout_lsp = ffengc_log::sinkFactory::create<ffengc_log::stdoutSink>();
+    ffengc_log::logSink::ptr file_lsp = ffengc_log::sinkFactory::create<ffengc_log::fileSink>("./logfile/test.log");
+    ffengc_log::logSink::ptr roll_lsp = ffengc_log::sinkFactory::create<ffengc_log::rollSink>("./logfile/roll-", 1024 * 1024);
+    stdout_lsp->log(str.c_str(), str.size());
+    file_lsp->log(str.c_str(), str.size());
+    size_t cur_size = 0;
+    size_t cnt = 0;
+    while (cur_size < 1024 * 1024 * 10) {
+        std::string tmp = str + std::to_string(cnt++);
+        roll_lsp->log(tmp.c_str(), tmp.size());
+        cur_size += tmp.size();
+    }
+}
+
+```
+对于滚动输出，期望是生成10个日志文件。
+
+## 日志器模块（建造者模式）
+
+日志器模块是对前边多个模块的整合，想要创建一个日志器，需要设置日志器名称，设置日志输出等级，设计日志器类型，设置日志输出格式，且落地方向有可能存在多个，整个日志器的创建过程较为复杂，为了保持良好的代码风格，编写出优雅的代码，因此日志器的创建这里采用了建造者模式。
+
+日志器设计一个抽象的 Logger 基类，然后在基类的基础上，继承出 SyncLogger 和 AsyncLogger。
+
+具体实现如代码所示，思想都是非常简单的。
+
+下面我们测试一下同步日志器。
+
+```cpp
+TEST(all_test, sync_logger_test) {
+    std::string logger_name = "sync_logger";
+    ffengc_log::logLevel::value limit = ffengc_log::logLevel::value::WARNING;
+    ffengc_log::formatter::ptr fmt(new ffengc_log::formatter("[%d{%H:%M:%S}][%c][%f:%l][%p]%T%m%n"));
+    // 3个日志器
+    std::vector<ffengc_log::logSink::ptr> sinks = {
+        ffengc_log::sinkFactory::create<ffengc_log::stdoutSink>(),
+        ffengc_log::sinkFactory::create<ffengc_log::fileSink>("./logfile/test.log"),
+        ffengc_log::sinkFactory::create<ffengc_log::rollSink>("./logfile/roll-", 1024 * 1024)
+    };
+    ffengc_log::logger::ptr logger(new ffengc_log::syncLogger(logger_name, limit, fmt, sinks));
+    size_t cur_size = 0, count = 0;
+    std::string str = "log test from sync_logger_test";
+    logger->debug(__FILE__, __LINE__, "%s", str.c_str()); // 应该是输出不了的
+    logger->info(__FILE__, __LINE__, "%s", str.c_str());
+    logger->warning(__FILE__, __LINE__, "%s", str.c_str());
+    logger->error(__FILE__, __LINE__, "%s", str.c_str());
+    logger->fatal(__FILE__, __LINE__, "%s", str.c_str());
+
+    // while (cur_size < 1024 * 1024 * 10) {
+    //     std::string tmp = "[" + std::to_string(count++) + "]" + str;
+    //     logger->fatal(__FILE__, __LINE__, "%s", tmp.c_str());
+    //     cur_size += tmp.size();
+    // }
+}
+```
+
+理论上来说，输出只能有 `WARNING` 及其以上等级的日志输出。最后测试是成功的。
+```sh
+[15:44:57][sync_logger][src/test.cc:86][WARNING]  log test from sync_logger_test
+[15:44:57][sync_logger][src/test.cc:87][ERROR]  log test from sync_logger_test
+[15:44:57][sync_logger][src/test.cc:88][FATAL]  log test from sync_logger_test
+```
+
+但此时想要构造一个日志器是非常复杂的，需要传递很多的参数，所以现在需要改造成建造者模式。
 
