@@ -179,9 +179,57 @@ public:
         : logger(logger_name, level, ft, sinks) { }
 };
 // 1. 抽象一个建造者类
+enum class loggerType {
+    LOGGER_SYNC,
+    LOGGER_ASYNC
+};
+class loggerBuilder {
+protected:
+    loggerType __logger_type;
+    std::string __logger_name;
+    std::atomic<logLevel::value> __limit_value;
+    formatter::ptr __formatter;
+    std::vector<logSink::ptr> __sinks; //
+public:
+    loggerBuilder()
+        : __logger_type(loggerType::LOGGER_SYNC)
+        , __limit_value(logLevel::value::DEBUG) { }
+    void buildLoggerType(loggerType type) { __logger_type = type; }
+    void buildLoggerName(const std::string& name) { __logger_name = name; }
+    void buildLoggerLevel(logLevel::value level) { __limit_value = level; }
+    void buildFormatter(const std::string& pattern) { __formatter = std::make_shared<formatter>(pattern); }
+    template <typename sinkType, typename... Args>
+    void buildSink(Args&&... args) {
+        logSink::ptr psink = sinkFactory::create<sinkType>(std::forward<Args>(args)...);
+        __sinks.push_back(psink);
+    }
+    virtual logger::ptr build() = 0; // 这个是虚函数
+};
 // 2. 派生一个具体的建造者类
 //  2.1 局部日志器建造者类
+class localLoggerBuilder : public loggerBuilder {
+public:
+    logger::ptr build() override {
+        assert(!__logger_name.empty()); // 必须有日志器名称
+        if (__formatter == nullptr)
+            // 构造默认的
+            __formatter = std::make_shared<formatter>();
+        if (__sinks.empty())
+            // 默认放到标准输出
+            buildSink<stdoutSink>();
+        if (__logger_type == loggerType::LOGGER_ASYNC) {
+            // ...
+        } else if (__logger_type == loggerType::LOGGER_SYNC)
+            return std::make_shared<syncLogger>(__logger_name, __limit_value, __formatter, __sinks);
+        else
+            assert(false);
+    }
+};
 //  2.2 全局的日志器建造者类
+class globalLoggerBuilder : public loggerBuilder {
+public:
+    logger::ptr build() override { }
+};
 // tips: 因为我们的logger对参数顺序没有要求，因此在这里省略指挥者类
 } // namespace ffengc_log
 

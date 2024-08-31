@@ -1,3 +1,0 @@
-[15:44:57][sync_logger][src/test.cc:86][WARNING]	log test from sync_logger_test
-[15:44:57][sync_logger][src/test.cc:87][ERROR]	log test from sync_logger_test
-[15:44:57][sync_logger][src/test.cc:88][FATAL]	log test from sync_logger_test
