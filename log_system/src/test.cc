@@ -110,6 +110,10 @@ TEST(all_test, sync_logger_builder_test) {
     logger->fatal(__FILE__, __LINE__, "%s", str.c_str());
 }
 
+TEST(all_test, single_buffer_test) {
+    
+}
+
 int main(int argc, char** argv) {
     testing::InitGoogleTest(&argc, argv);
     testing::AddGlobalTestEnvironment(new all_test);
