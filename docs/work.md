@@ -8,6 +8,8 @@
   - [消息格式化模块](#消息格式化模块)
   - [日志落地模块设计（工厂模式）](#日志落地模块设计工厂模式)
   - [日志器模块（建造者模式）](#日志器模块建造者模式)
+  - [异步日志器模块](#异步日志器模块)
+    - [双缓冲区设计思想](#双缓冲区设计思想)
 
 ## 框架设计
 
@@ -320,3 +322,28 @@ TEST(all_test, sync_logger_test) {
 
 但此时想要构造一个日志器是非常复杂的，需要传递很多的参数，所以现在需要改造成建造者模式。
 
+建造者代码如代码所示。
+
+测试代码如下所示。
+
+```cpp
+TEST(all_test, sync_logger_builder_test) {
+    std::unique_ptr<ffengc_log::loggerBuilder> builder(new ffengc_log::localLoggerBuilder());
+    builder->buildLoggerLevel(ffengc_log::logLevel::value::WARNING);
+    builder->buildLoggerName("sync_logger");
+    builder->buildLoggerType(ffengc_log::loggerType::LOGGER_SYNC);
+    builder->buildFormatter("[%d{%H:%M:%S}][%c][%f:%l][%p]%T%m%n");
+    builder->buildSink<ffengc_log::fileSink>("./logfile/test.log");
+    auto logger = builder->build();
+    std::string str = "log test from sync_logger_builder_test";
+    logger->debug(__FILE__, __LINE__, "%s", str.c_str()); // 应该是输出不了的
+    logger->info(__FILE__, __LINE__, "%s", str.c_str());
+    logger->warning(__FILE__, __LINE__, "%s", str.c_str());
+    logger->error(__FILE__, __LINE__, "%s", str.c_str());
+    logger->fatal(__FILE__, __LINE__, "%s", str.c_str());
+}
+```
+
+## 异步日志器模块
+
+### 双缓冲区设计思想
