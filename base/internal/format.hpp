@@ -107,7 +107,7 @@ private:
     std::vector<formatItem::ptr> __items; //
 public:
     using ptr = std::shared_ptr<formatter>;
-    formatter(const std::string& pattern = "[%d{%H:%M:%S}][%t][%c][%f:%l][%p]%T%m%n")
+    formatter(const std::string& pattern = "[%d{%H:%M:%S}][%t][%c][%f:%l][%p] %m%n")
         : __pattern(pattern) {
         assert(parsePattern());
     }

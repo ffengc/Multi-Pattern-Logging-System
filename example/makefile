@@ -1,5 +1,5 @@
-CFLAG= -I/home/ffengc/Project/Multi-Pattern-Logging-System/base/
-LFLAG= -lpthread -lgtest
+CFLAG= -I../base/
+LFLAG= -lpthread
 example.out: example.cc
 	g++ -g -std=c++11 $(CFLAG) $^ -o $@  $(LFLAG)
 .PHONY:clean
