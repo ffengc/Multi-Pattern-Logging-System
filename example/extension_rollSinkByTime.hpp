@@ -7,7 +7,7 @@
 #ifndef __YUFC_EXTENSION_ROLLSINK_BY_TIME__
 #define __YUFC_EXTENSION_ROLLSINK_BY_TIME__
 
-#include "../sink.hpp"
+#include "log.h"
 // 用户扩展落地方式
 // 以时间段进行滚动
 
