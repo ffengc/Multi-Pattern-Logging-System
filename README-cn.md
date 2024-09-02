@@ -27,6 +27,8 @@ C++ version of synchronous &amp; asynchronous logging system based on multiple d
 
 ## 如何使用
 
+- [Documentation of the Log System](./docs/documentation.md)
+
 ## 性能测试
 
 **测试环境：**
@@ -47,17 +49,21 @@ C++ version of synchronous &amp; asynchronous logging system based on multiple d
 > [!TIP]
 > 通过测试结果也可以看出，多线程模式下，异步工作模式对性能有很大的提升帮助。
 
+### 技术补充
+
+对于完成这个项目，我用一个文档补充了关于不定参函数和六种设计模式的详细解释，作为这个项目的前置技术补充。
+
+- [Prerequisite knowledge document for the project](./docs/supplement.md)
+
 ## 项目的具体实现
 
 项目具体结构如下所示。
 
 ![](./assets/1.png)
 
-### 技术补充
+细节上的实现见以下文档:
 
-对于完成这个项目，我用一个文档补充了关于不定参函数和六种设计模式的详细解释，作为这个项目的前置技术补充。
-
-- [Prerequisite knowledge document for the project](./docs/supplement.md)
+- [word.md](./docs/work.md)
 
 ## 一些想法
 

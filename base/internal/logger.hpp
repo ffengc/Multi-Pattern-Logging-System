@@ -287,8 +287,10 @@ public:
     logger::ptr get(const std::string& logger_name) {
         std::unique_lock<std::mutex> lock(__mtx);
         auto it = __loggers.find(logger_name);
-        if (it == __loggers.end())
-            return logger::ptr();
+        if (it == __loggers.end()) {
+            std::cerr << "cannot find this logger: " << logger_name << std::endl;
+            abort();
+        }
         return it->second;
     }
     logger::ptr get_root() { return __root_logger; }
