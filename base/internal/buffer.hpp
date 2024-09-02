@@ -10,15 +10,15 @@
 #include "util.hpp"
 #include <algorithm>
 #include <assert.h>
-#include <deque>
+#include <vector>
 
 namespace ffengc_log {
-#define DEFAULT_BUFFER_SIZE (10 * 1024 * 1024)
-#define THRESHOLD_BUFFER_SIZE (80 * 1024 * 1024)
-#define LINEAR_INCREMENT_BUFFER_SIZE (10 * 1024 * 1024)
+#define DEFAULT_BUFFER_SIZE (1 * 1024 * 1024)
+#define THRESHOLD_BUFFER_SIZE (8 * 1024 * 1024)
+#define LINEAR_INCREMENT_BUFFER_SIZE (1 * 1024 * 1024)
 class buffer {
-private:
-    std::deque<char> __buffer;
+public:
+    std::vector<char> __buffer;
     size_t __read_idx;
     size_t __write_idx; //
 public:
@@ -27,11 +27,12 @@ public:
         , __write_idx(0)
         , __read_idx(0) { }
     void push(const char* data, size_t len) {
-        // 0. 缓冲区空间不够的琴况: 1. 扩容, 2.阻塞/返回false
+        // 0. 缓冲区空间不够的情况: 1. 扩容, 2.阻塞/返回false
         // if(len > writeableSize()) return;
+        // assert(len <= writeableSize());
         alloc(len);
         // 1. 将数据拷贝进缓冲区
-        std::copy(data, data + len, __buffer.begin() + __write_idx);
+        std::copy(data, data + len, &__buffer[__write_idx]);
         // 2. 将写入位置向后偏移
         moveWriter(len);
     } // 向缓冲区写入数据
@@ -39,8 +40,8 @@ public:
         // 对于扩容思路来说，这个接口没啥用，因为总是可写的，因此这个接口仅仅针对只有固定大小buffer提供的
         return (__buffer.size() - __write_idx);
     } // 返回可写数据的长度（buffer剩余空间）
-    auto begin() -> std::deque<char>::iterator {
-        return __buffer.begin() + __write_idx;
+    const char* begin() {
+        return &__buffer[__read_idx];
     } // 返回可读数据的起始地址
     size_t readableSize() {
         return __write_idx - __read_idx;
@@ -68,11 +69,11 @@ public:
 private:
     // 扩容
     void alloc(size_t len) {
-        if (len < writeableSize())
+        if (len <= writeableSize())
             return; // 不需要扩容
         size_t new_size = 0;
         if (__buffer.size() < THRESHOLD_BUFFER_SIZE)
-            new_size = __buffer.size() * 2; // 翻倍增长
+            new_size = __buffer.size() * 2 + len; // 翻倍增长
         else
             new_size = __buffer.size() + LINEAR_INCREMENT_BUFFER_SIZE; // 线性增长
         __buffer.resize(new_size);

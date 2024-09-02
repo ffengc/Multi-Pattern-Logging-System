@@ -7,6 +7,7 @@
 #ifndef __YUFC_LOGGER__
 #define __YUFC_LOGGER__
 
+#include "asyncLooper.hpp"
 #include "format.hpp"
 #include "level.hpp"
 #include "sink.hpp"
@@ -158,6 +159,8 @@ public:
         log(ss.str().c_str(), ss.str().size());
         free(res); // 不要忘记了
     } //
+public:
+    const std::string& name() { return __logger_name; } //
 protected:
     virtual void log(const char* data, size_t len) = 0; // 实际的落地由它来完成
 };
@@ -178,6 +181,29 @@ public:
         const std::vector<logSink::ptr>& sinks)
         : logger(logger_name, level, ft, sinks) { }
 };
+/* 异步日志器 */
+class asyncLogger : public logger {
+private:
+    asyncLooper::ptr __looper; //
+private:
+    void log(const char* data, size_t len) {
+        __looper->push(data, len);
+    } // 将数据写入缓冲区
+    void logSink(buffer& buf) {
+        if (__sinks.empty())
+            return;
+        for (const auto& e : __sinks)
+            e->log(buf.begin(), buf.readableSize());
+    } // 把缓冲区中的数据实际落地
+public:
+    asyncLogger(const std::string& logger_name,
+        logLevel::value level,
+        formatter::ptr& ft,
+        const std::vector<logSink::ptr>& sinks,
+        asyncType looper_type)
+        : logger(logger_name, level, ft, sinks)
+        , __looper(std::make_shared<asyncLooper>(std::bind(&asyncLogger::logSink, this, std::placeholders::_1), looper_type)) { }
+};
 // 1. 抽象一个建造者类
 enum class loggerType {
     LOGGER_SYNC,
@@ -189,12 +215,15 @@ protected:
     std::string __logger_name;
     std::atomic<logLevel::value> __limit_value;
     formatter::ptr __formatter;
-    std::vector<logSink::ptr> __sinks; //
+    std::vector<logSink::ptr> __sinks;
+    asyncType __looper_type; // 异步工作模式
 public:
     loggerBuilder()
         : __logger_type(loggerType::LOGGER_SYNC)
-        , __limit_value(logLevel::value::DEBUG) { }
+        , __limit_value(logLevel::value::DEBUG)
+        , __looper_type(asyncType::ASYNC_SAFE) { }
     void buildLoggerType(loggerType type) { __logger_type = type; }
+    void buildEnableUnsafeLoop() { __looper_type = asyncType::ASYNC_UNSAFE; }
     void buildLoggerName(const std::string& name) { __logger_name = name; }
     void buildLoggerLevel(logLevel::value level) { __limit_value = level; }
     void buildFormatter(const std::string& pattern) { __formatter = std::make_shared<formatter>(pattern); }
@@ -218,18 +247,82 @@ public:
             // 默认放到标准输出
             buildSink<stdoutSink>();
         if (__logger_type == loggerType::LOGGER_ASYNC) {
-            // ...
+            return std::make_shared<asyncLogger>(__logger_name, __limit_value, __formatter, __sinks, __looper_type);
         } else if (__logger_type == loggerType::LOGGER_SYNC)
             return std::make_shared<syncLogger>(__logger_name, __limit_value, __formatter, __sinks);
         else
             assert(false);
+        assert(false);
+        return nullptr;
     }
 };
+
+// 日志器管理器(单例模式 懒汉)
+class loggerManager {
+private:
+    std::mutex __mtx;
+    logger::ptr __root_logger;
+    std::unordered_map<std::string, logger::ptr> __loggers; //
+private:
+    loggerManager() {
+        std::unique_ptr<ffengc_log::loggerBuilder> builder(new ffengc_log::localLoggerBuilder());
+        builder->buildLoggerName("root");
+        __root_logger = builder->build();
+        __loggers.insert({ "root", __root_logger }); // 添加到管理中
+    } //
+public:
+    void add(logger::ptr& obj) {
+        if (exists(obj->name()))
+            return;
+        std::unique_lock<std::mutex> lock(__mtx);
+        __loggers.insert({ obj->name(), obj });
+    }
+    bool exists(const std::string& logger_name) {
+        std::unique_lock<std::mutex> lock(__mtx);
+        auto it = __loggers.find(logger_name);
+        if (it == __loggers.end())
+            return false;
+        return true;
+    }
+    logger::ptr get(const std::string& logger_name) {
+        std::unique_lock<std::mutex> lock(__mtx);
+        auto it = __loggers.find(logger_name);
+        if (it == __loggers.end())
+            return logger::ptr();
+        return it->second;
+    }
+    logger::ptr get_root() { return __root_logger; }
+    static loggerManager& getInstance() {
+        // 在 C++11 之后，针对静态局部变量，编译器在编译的层面实现了线程安全
+        // 当静态局部变量在没有构造完成之前，其他的线程进入就会阻塞
+        static loggerManager eton;
+        return eton;
+    }
+};
+
 //  2.2 全局的日志器建造者类
 class globalLoggerBuilder : public loggerBuilder {
 public:
-    logger::ptr build() override { }
+    logger::ptr build() override {
+        assert(!__logger_name.empty()); // 必须有日志器名称
+        if (__formatter == nullptr)
+            // 构造默认的
+            __formatter = std::make_shared<formatter>();
+        if (__sinks.empty())
+            // 默认放到标准输出
+            buildSink<stdoutSink>();
+        logger::ptr obj;
+        if (__logger_type == loggerType::LOGGER_ASYNC) {
+            obj = std::make_shared<asyncLogger>(__logger_name, __limit_value, __formatter, __sinks, __looper_type);
+        } else if (__logger_type == loggerType::LOGGER_SYNC)
+            obj = std::make_shared<syncLogger>(__logger_name, __limit_value, __formatter, __sinks);
+        else
+            assert(false);
+        loggerManager::getInstance().add(obj);
+        return obj;
+    }
 };
+
 // tips: 因为我们的logger对参数顺序没有要求，因此在这里省略指挥者类
 } // namespace ffengc_log
 

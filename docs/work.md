@@ -11,6 +11,10 @@
   - [异步日志器模块](#异步日志器模块)
     - [双缓冲区设计思想](#双缓冲区设计思想)
     - [单个缓冲区的设计](#单个缓冲区的设计)
+    - [异步线程实现](#异步线程实现)
+  - [建立日志器管理器](#建立日志器管理器)
+  - [全局接口设计（代理模式）](#全局接口设计代理模式)
+  - [性能测试](#性能测试)
 
 ## 框架设计
 
@@ -368,3 +372,203 @@ TEST(all_test, sync_logger_builder_test) {
 1. 这个缓冲区直接存放格式化后的日志消息字符串
 2. 当前写入位置的指针（指向可写区域的起始位置，避免数据的写入覆盖）
 3. 当前的读取数据位置的指针（指向可读数据区域的起始位置），当读取指针与写入指针指向相同的位置表示数据取完了
+
+先测试单个缓冲区的功能
+
+```cpp
+TEST(all_test, single_buffer_test) {
+    // 读取文件数据，一点一点写入缓冲区，最终将缓冲区数据写入文件，判断生成的新文件与源文件是否一致
+    std::ifstream ifs("./logs/test.log", std::ios::binary);
+    if (ifs.is_open() == false) {
+        std::cerr << "open file failed" << std::endl;
+        abort();
+    }
+    ifs.seekg(0, std::ios::end); // 跳转到文件末尾
+    size_t fsize = ifs.tellg(); // 获取当前读写位置相对于起始位置的偏移量
+    ifs.seekg(0, std::ios::beg); // 重新跳转到起始位置
+    std::string body;
+    body.resize(fsize);
+    ifs.read(&body[0], fsize);
+    if (ifs.good() == false) {
+        std::cerr << "read error" << std::endl;
+        abort();
+    }
+    ifs.close();
+
+    std::cout << fsize << std::endl;
+    ffengc_log::buffer bff;
+    for (int i = 0; i < body.size(); ++i) {
+        // std::cout << bff.__read_idx << ":" << bff.__write_idx << std::endl;
+        bff.push(&body[i], 1);
+    }
+    std::cout << bff.readableSize() << std::endl;
+    std::ofstream ofs("./logs/temp.log", std::ios::binary);
+    // ofs.write(bff.begin(), bff.readableSize());
+    size_t write_size = bff.readableSize();
+    for (int i = 0; i < write_size; ++i) {
+        ofs.write(bff.begin(), 1);
+        if (!ofs.good()) {
+            std::cerr << "ofs error" << std::endl;
+            abort();
+        }
+        bff.moveReader(1);
+    }
+    ofs.close();
+```
+
+**思想：读取文件数据，一点一点写入缓冲区，最终将缓冲区数据写入文件，判断生成的新文件与源文件是否一致**
+
+### 异步线程实现
+
+```cpp
+namespace ffengc_log {
+using functor = std::function<void(buffer&)>;
+enum class asyncType {
+    ASYNC_SAFE, // 安全状态，表示哈UN冲功能区满了则阻塞，避免资源耗尽的风险
+    ASYNC_UNSAFE, // 不考虑资源耗尽，用于压力测试
+};
+class asyncLooper {
+private:
+    asyncType __looper_type;
+    std::thread __work_thread; // 异步工作器对应的线程 不要取名为 __thread, __thread 是那个用来指定字段每个线程独占的那个关键字
+    std::atomic<bool> __stop_signal; // 停止信号
+    std::mutex __mtx;
+    std::condition_variable __producer_condition;
+    std::condition_variable __consumer_condition;
+    buffer __producer_buffer; // 生产者缓冲区
+    buffer __consumer_buffer; // 消费者缓冲区
+public:
+    using ptr = std::shared_ptr<asyncLooper>;
+    asyncLooper(const functor& callback, const asyncType& looper_type = asyncType::ASYNC_SAFE)
+        : __stop_signal(false)
+        , __looper_type(looper_type)
+        , __callBack(callback)
+        , __work_thread(std::thread(&asyncLooper::threadEntry, this)) { }
+    ~asyncLooper() {
+        stop();
+    }
+    void stop() {
+        __stop_signal = true;
+        __consumer_condition.notify_all();
+        __work_thread.join();
+    }
+    void push(const char* data, size_t len) {
+        // 1. 无限扩容（非安全，用于压力测试）
+        // 2. 固定大小 满了之后需要阻塞
+        std::unique_lock<std::mutex> lock(__mtx);
+        if (__looper_type == asyncType::ASYNC_SAFE)
+            __producer_condition.wait(lock, [&]() { return __producer_buffer.writeableSize() >= len; });
+        __producer_buffer.push(data, len);
+        __consumer_condition.notify_one(); // 唤醒消费者
+    } //
+private:
+    void threadEntry() {
+        while (!__stop_signal) {
+            // 1. 判断生产缓冲区是否有数据，有则交换
+            {
+                std::unique_lock<std::mutex> lock(__mtx);
+                __consumer_condition.wait(lock, [&]() { return __stop_signal || !__producer_buffer.empty(); });
+                __consumer_buffer.swap(__producer_buffer);
+                // 4. 唤醒生产者
+                if (__looper_type == asyncType::ASYNC_SAFE) // 如果是非安全状态，producer不会阻塞
+                    __producer_condition.notify_all();
+            }
+            // 2. 被唤醒后，对消费缓冲区进行处理
+            __callBack(__consumer_buffer);
+            // 3. 初始化消费缓冲区
+            __consumer_buffer.reset();
+        }
+    } // 线程的入口函数
+private:
+    functor __callBack; // 具体对缓冲区数据进行处理的cb函数
+};
+} // namespace ffengc_log
+```
+
+然后就可以去完善 async 的 logger 了。
+
+进行测试。
+
+```cpp
+TEST(all_test, async_log_test) {
+    std::unique_ptr<ffengc_log::loggerBuilder> builder(new ffengc_log::localLoggerBuilder());
+    builder->buildLoggerLevel(ffengc_log::logLevel::value::WARNING);
+    builder->buildLoggerName("async_logger");
+    builder->buildLoggerType(ffengc_log::loggerType::LOGGER_ASYNC);
+    builder->buildFormatter("[%d{%H:%M:%S}][%c][%f:%l][%p]%T%m%n");
+    builder->buildSink<ffengc_log::rollSink>("./logfile/async_test_roll-", 1024 * 1024);
+    builder->buildSink<ffengc_log::fileSink>("./logfile/async_test.log");
+    builder->buildSink<ffengc_log::stdoutSink>();
+    auto logger = builder->build();
+    std::string str = "log test from async_log_test";
+    logger->debug(__FILE__, __LINE__, "%s", str.c_str()); // 应该是输出不了的
+    logger->info(__FILE__, __LINE__, "%s", str.c_str());
+    logger->warning(__FILE__, __LINE__, "%s", str.c_str());
+    logger->error(__FILE__, __LINE__, "%s", str.c_str());
+    logger->fatal(__FILE__, __LINE__, "%s", str.c_str());
+    size_t count = 0;
+    while (count < 500000) {
+        std::string tmp = "[" + std::to_string(count++) + "]" + str;
+        logger->fatal(__FILE__, __LINE__, "%s", tmp.c_str());
+    }
+}
+```
+
+观察异步工作器是否能真正写入这 500000 条数据。
+
+## 建立日志器管理器
+
+- 对所有创建的日志器进行管理
+- 将管理器设置为单例模式
+- 可以在程序的任意位置获取相同的单例对象，获取其中的日志器进行日志输出
+- 拓展：单例管理器创建的时候，默认先创建一个stdout的日志器
+
+
+编写完单例的日志器管理器之后，就可以完善 `globalLoggerBuilder` 类了，其实操作和 local 的没有什么区别，只需要把创建好的 `logger` 添加到单例的管理中即可。
+
+进行测试：
+
+```cpp
+void test_log() {
+    ffengc_log::logger::ptr logger = ffengc_log::loggerManager::getInstance().get("globalLoggerBuilder");
+    std::string str = "log test from logManager_test";
+    logger->debug(__FILE__, __LINE__, "%s", str.c_str()); // 应该是输出不了的
+    logger->info(__FILE__, __LINE__, "%s", str.c_str());
+    logger->warning(__FILE__, __LINE__, "%s", str.c_str());
+    logger->error(__FILE__, __LINE__, "%s", str.c_str());
+    logger->fatal(__FILE__, __LINE__, "%s", str.c_str());
+}
+TEST(all_test, globalLoggerBuilder) {
+    std::unique_ptr<ffengc_log::loggerBuilder> builder(new ffengc_log::globalLoggerBuilder());
+    builder->buildLoggerLevel(ffengc_log::logLevel::value::WARNING);
+    builder->buildLoggerName("globalLoggerBuilder");
+    builder->buildLoggerType(ffengc_log::loggerType::LOGGER_ASYNC);
+    builder->buildFormatter("[%d{%H:%M:%S}][%c][%f:%l][%p]%T%m%n");
+    builder->buildSink<ffengc_log::fileSink>("./logfile/globalLoggerBuilder.log");
+    builder->buildSink<ffengc_log::stdoutSink>();
+    auto logger = builder->build();
+    test_log();
+}
+```
+在一个作用域创建 `logger`, 在另一个作用域使用这个 `logger`。
+
+## 全局接口设计（代理模式）
+
+创建一个 `.h` 文件提供给用户去使用。
+
+## 性能测试
+
+下面对日志系统做一个性能测试，测试一下平均每秒能打印多少条日志文件到文件。
+
+**主要测试的方法是:** 每秒能打印日志数 = 打印日志总数 / 总的打印消耗时间
+
+**主要测试要素:** 同步/异步 & 单线程/多线程
+- 100+条指定长度的日志输出所耗时间
+- 每秒可以输出多少条日志
+- 每秒可以输出多少MB日志
+
+**测试环境:**
+
+Ubuntu22.04 VirtualHost 内存2G CPU双核
+
+具体代码见 `bench` 目录，具体测试结果，见 README 文件。
