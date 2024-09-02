@@ -20,8 +20,6 @@ This project is mainly to implement a log system, which mainly supports the foll
 
 Core technology stack: class hierarchy design (inheritance and polymorphism), C++11 (multi-threading, right value references, etc.), double buffer, producer consumer model, multi-threading, design pattern (singleton, factory proxy, builder, etc.), GTest
 
-![](./assets/1.png)
-
 > [!WARNING]
 > **This is a component-based project, not a business-based project, and it will eventually be used by others.**
 
