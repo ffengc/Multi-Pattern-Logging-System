@@ -1,58 +1,46 @@
-# Detailed Project Implementation
+# 项目详细实现
 
-**English** | [中文](./work-cn.md)
+[English](./work.md) | **中文**
 
-- [Detailed Project Implementation](#detailed-project-implementation)
-  - [Framework Design](#framework-design)
-  - [Utility Class Development](#utility-class-development)
-  - [Log Level Module](#log-level-module)
-  - [Log Message Class](#log-message-class)
-  - [Message Formatting Module](#message-formatting-module)
-  - [Log Memory Deployment Module Design (Factory Pattern)](#log-memory-deployment-module-design-factory-pattern)
-  - [Logger Module (Builder Pattern)](#logger-module-builder-pattern)
-  - [Asynchronous Logger Module](#asynchronous-logger-module)
-    - [Double Buffer Design Concept](#double-buffer-design-concept)
-    - [Single Buffer Design](#single-buffer-design)
-    - [Asynchronous Thread Implementation](#asynchronous-thread-implementation)
-  - [Creating a Logger Manager](#creating-a-logger-manager)
-  - [Global Interface Design (Proxy Pattern)](#global-interface-design-proxy-pattern)
-  - [Performance Testing](#performance-testing)
+- [项目详细实现](#项目详细实现)
+  - [框架设计](#框架设计)
+  - [工具类编写](#工具类编写)
+  - [日志等级模块](#日志等级模块)
+  - [日志消息类](#日志消息类)
+  - [消息格式化模块](#消息格式化模块)
+  - [日志落地模块设计（工厂模式）](#日志落地模块设计工厂模式)
+  - [日志器模块（建造者模式）](#日志器模块建造者模式)
+  - [异步日志器模块](#异步日志器模块)
+    - [双缓冲区设计思想](#双缓冲区设计思想)
+    - [单个缓冲区的设计](#单个缓冲区的设计)
+    - [异步线程实现](#异步线程实现)
+  - [建立日志器管理器](#建立日志器管理器)
+  - [全局接口设计（代理模式）](#全局接口设计代理模式)
+  - [性能测试](#性能测试)
 
-## Framework Design
+## 框架设计
 
-- Log Registration Module: Enumerates the number of log levels, requiring different level labels for different logs.
+- 日志登记模块：枚举出日志分为多少个等级，对不同的日志需要有不同的等级标记
+- 日志消息模块：封装一条日志所需的各种要素（时间，线程ID，文件名，行号，日志等级，消息主题...）
+- 消息格式化模块：按照指定的格式，对日志消息关键要素进行组织，最终得到一个指定格式的字符串
+- 日志落地模块：对上面的这几个模块进行整合
+  - 同时还需要增加，同步日志器模块和异步日志器模块
+- 异步线程模块：负责异步日志的实际落地输出功能
+- 单例的日志器管理模块：对日志进行全局的管理，以便能够在项目的任何位置获取指定的日志器进行日志输出
 
-- Log Message Module: Encapsulates the various elements required for a log entry (time, thread ID, filename, line number, log level, message subject, etc.).
-
-- Message Formatting Module: Organizes the key elements of the log message according to a specified format, ultimately obtaining a string in the specified format.
-
-- Log Execution Module: Integrates the above modules.
-
-- Additionally, a synchronous logger module and an asynchronous logger module need to be added.
-
-- Asynchronous Thread Module: Responsible for the actual execution and output of asynchronous logs.
-
-- Singleton Logger Management Module: Performs global log management, enabling the use of a specified logger for log output from anywhere in the project.
-
-
-The overall framework is shown below.
-
+整体框架如下所示。
 
 ![](./assets/1.png)
 
-## Utility Class Development
+## 工具类编写
 
-**Specific functionalities required:**
+**具体需要以下功能：**
+- 获取时间
+- 判断文件（目录）是否存在
+- 获取文件的父级目录
+- 创建指定路径的文件夹
 
-- Get time
-
-- Check if file (directory) exists
-
-- Get the parent directory of the file
-
-- Create a folder at a specified path
-
-Code is shown below:
+代码如下所示：
 ```cpp
 namespace ffengc_log {
 namespace util {
@@ -100,11 +88,11 @@ namespace util {
 } // namespace ffengc_log
 ```
 
-Then I will use the `gtest` framework to perform unit tests on `util`.
+然后我会使用 `gtest` 框架来对 `util` 进行单元测试。
 
-## Log Level Module
+## 日志等级模块
 
-The specific implementation and level settings are shown below.
+具体实现和等级设置如下所示。
 
 ```cpp
 class logLevel {
@@ -140,25 +128,18 @@ public:
 };
 ```
 
-## Log Message Class
+## 日志消息类
 
-**The following elements need to be output:**
+**需要输出如下要素：**
+- 日志的输出时间：用于过滤日志输出时间
+- 日志等级：用于进行日志过滤分析
+- 源文件名称
+- 源文件行号：用于定位出现错误的代码位置
+- 线程ID：用于过滤出错的线程
+- 日志主体消息
+- 日志器名称：当前支持多个日志器同时使用
 
-- Log output time: used to filter log output times
-
-- Log level: used for log filtering and analysis
-
-- Source file name
-
-- Source file line number: used to locate the code where the error occurred
-
-- Thread ID: used to filter the thread that encountered the error
-
-- Log body message
-
-- Logger name: Currently, multiple loggers can be used simultaneously.
-
-The code is shown below:
+代码如下所示:
 
 ```cpp
 namespace ffengc_log {
@@ -186,100 +167,73 @@ struct logMessage {
 } // namespace ffengc_log
 ```
 
-## Message Formatting Module
+## 消息格式化模块
 
-Now we need to organize the information in `logMessage` into a string.
+现在需要把 `logMessage` 里面的信息，组织成一个字符串。
 
-It's important to clarify here that to allow users to customize the amount of information output, we need to define a specific output format, as shown below.
+这里要明确，为了用户可以自己设置到底需要输出多少信息，所以我们要定义指定的输出格式，如下所示。
 
-| Symbol | Description |
 
+| 符号 | 描述       |
 | ---- | ---------- |
+| `%d` | 日期       |
+| `%T` | 缩进       |
+| `%t` | 线程id     |
+| `%p` | 日志级别   |
+| `%c` | 日志器名称 |
+| `%f` | 文件名     |
+| `%l` | 行号       |
+| `%m` | 日志消息   |
+| `%n` | 换行       |
 
-| `%d` | Date |
+这样每个 `%...` 可以对应一个信息，这样才能让用户去指定，到底需要输出多少信息，而不是全部统一输出固定的信息。
 
-| `%T` | Indentation |
+需要的成员：
+- 格式化字符串
+- 格式化子项数组：不同的格式化子项，会从日志消息中取出指定的元素，转换为字符串
 
-| `%t` | Thread ID |
+格式化子项数组 `std::vector<FormatItem::ptr> items` 成员：用于按序保存格式化字符串对应的子格式化对象。`FormatItem` 类主要负责日志消息子项的获取及格式化。
 
-| `%p` | Log Level |
 
-| `%c` | Logger Name |
-
-| `%f` | Filename |
-
-| `%l` | Line Number |
-
-| `%m` | Log Message |
-
-| `%n` | Newline |
-
-This way, each `%...` corresponds to a message, allowing users to specify the amount of information to be output, rather than outputting a fixed amount of information uniformly.
-
-Required members:
-
-- Format string
-
-- Array of formatted sub-items: Different formatted sub-items will extract specified elements from the log message and convert them into strings.
-
-The formatted sub-item array `std::vector<FormatItem::ptr> items` members: Used to store the sub-format objects corresponding to the formatted strings in order. The `FormatItem` class is mainly responsible for retrieving and formatting log message sub-items.
-
-| Class Name | Description |
-
+| 类名               | 描述                                 |
 | ------------------ | ------------------------------------ |
+| `MsgFormatItem`    | 表示要从`LogMsg`中取出有效日志数据   |
+| `LevelFormatItem`  | 表示要从`LogMsg`中取出日志等级       |
+| `NameFormatItem`   | 表示要从`LogMsg`中取出日志器名称     |
+| `ThreadFormatItem` | 表示要从`LogMsg`中取出线程ID         |
+| `TimeFormatItem`   | 表示要从`LogMsg`中取出时间戳         |
+| `CFileFormatItem`  | 表示要从`LogMsg`中取出源码所在文件名 |
+| `CLineFormatItem`  | 表示要从`LogMsg`中取出源码所在行号   |
+| `TabFormatItem`    | 表示一个制表符缩进                   |
+| `NLineFormatItem`  | 表示一个换行                         |
+| `OtherFormatItem`  | 表示非格式化的原始字符串             |
 
-| `MsgFormatItem` | Retrieves valid log data from `LogMsg` |
+具体实现见代码所示。
 
-| `LevelFormatItem` | Retrieves the log level from `LogMsg` |
+## 日志落地模块设计（工厂模式）
 
-| `NameFormatItem` | Retrieves the logger name from `LogMsg` |
-
-| `ThreadFormatItem` | Retrieves the thread ID from `LogMsg` |
-
-| `TimeFormatItem` | Retrieves the timestamp from `LogMsg` |
-
-| `CFileFormatItem` | Retrieves the filename of the source code from `LogMsg` |
-
-| `CLineFormatItem` | Retrieves the line number of the source code from `LogMsg` |
-
-| `TabFormatItem` | Retrieves a tab indentation |
-
-| `NLineFormatItem` | Retrieves a newline character |
-
-| `OtherFormatItem` | Retrieves an unformatted raw string |
-
-See the code for the specific implementation.
-
-## Log Memory Deployment Module Design (Factory Pattern)
-
-The functionality is quite straightforward: it outputs the formatted log message string to a specified location.
+其实功能是很好理解的，就是把格式化完成后的日志消息字符串，输出到指定的位置。
 
 > [!TIP]
-> This can be extended to support simultaneously deploying logs to different locations.
+> 这里可以扩展：支持同时将日志落地到不同的位置
 
-Location Categories:
+位置分类:
+- 标准输出
+- 指定文件（事后进行日志分析）
+- 滚动文件（文件按照时间/大小进行滚动切换）
+  - 日志文件滚动的条件可以选择：大小和时间
+  - 日志文件在大于1GB的时候会更换新的文件
+  - 每天定点滚动一个日志文件
 
-- Standard Output
+当然，也支持用户自己编写一个新的落地模块，将日志进行其他方向的落地
 
-- Specified File (for post-log analysis)
+实现思想：使用工厂模式进行创建与表示的分离。
 
-- Rolling File (files are rotated based on time/size)
-
-- Log file rotation conditions can be selected: size and time
-
-- A new file will be created when the log file exceeds 1GB.
-
-- A new log file will be rotated at a fixed time each day.
-
-Of course, users can also write their own new deployment module to deploy logs in other directions.
-
-Implementation Idea: Use the factory pattern to separate creation and representation.
-
-See the code for the specific implementation. Below are some code detail tips.
+具体实现可以见代码。下面放一些代码细节的tips
 
 ***
 
-How should this be designed? To improve code extensibility, the sink type shouldn't be controlled by the `create()` parameter; instead, a template should be used.
+这里如何设计？为了让代码的扩展性更好，所以不应该用 `create()` 参数来控制sink的类型，而是使用模版
 ```cpp
 template<typename SinkType>
 class sinkFactory {
@@ -290,9 +244,9 @@ public:
 };
 ```
 
-However, this raises a problem: different sink classes require different numbers of parameters to construct. How do we handle this? How should we write this line of code? `return std::make_shared<SinkType>();`
+但是这里会遇到一个问题，不同sink类的构造是需要不同个数的参数的，这个怎么办？这句话怎么写？`return std::make_shared<SinkType>();`
 
-**Therefore, we need to use a function with definite arguments here!**
+**所以这里就要用到不定参函数了！**
 
 ```cpp
 class sinkFactory {
@@ -304,7 +258,7 @@ public:
 };
 ```
 
-test:
+进行测试:
 
 ```cpp
 TEST(all_test, sink_basic_test) {
@@ -330,17 +284,17 @@ TEST(all_test, sink_basic_test) {
 }
 
 ```
-For rolling output, the expectation is to generate 10 log files.
+对于滚动输出，期望是生成10个日志文件。
 
-## Logger Module (Builder Pattern)
+## 日志器模块（建造者模式）
 
-The logger module integrates several previous modules. Creating a logger requires setting the logger name, log level, logger type, and log output format. There may be multiple destinations for the logger, making the creation process quite complex. To maintain good coding style and write elegant code, the Builder pattern is used here.
+日志器模块是对前边多个模块的整合，想要创建一个日志器，需要设置日志器名称，设置日志输出等级，设计日志器类型，设置日志输出格式，且落地方向有可能存在多个，整个日志器的创建过程较为复杂，为了保持良好的代码风格，编写出优雅的代码，因此日志器的创建这里采用了建造者模式。
 
-The logger design uses an abstract base class `Logger`, and then inherits from `SyncLogger` and `AsyncLogger`.
+日志器设计一个抽象的 Logger 基类，然后在基类的基础上，继承出 SyncLogger 和 AsyncLogger。
 
-The specific implementation is shown in the code; the underlying idea is very simple.
+具体实现如代码所示，思想都是非常简单的。
 
-Let's test the synchronous logger below.
+下面我们测试一下同步日志器。
 
 ```cpp
 TEST(all_test, sync_logger_test) {
@@ -370,22 +324,18 @@ TEST(all_test, sync_logger_test) {
 }
 ```
 
-Theoretically, the output should only include logs of `WARNING` level or higher. The final test was successful.
-
-``sh
-[15:44:57][sync_logger][src/test.cc:86][WARNING] log test from sync_logger_test
-
-[15:44:57][sync_logger][src/test.cc:87][ERROR] log test from sync_logger_test
-
-[15:44:57][sync_logger][src/test.cc:88][FATAL] log test from sync_logger_test
-
+理论上来说，输出只能有 `WARNING` 及其以上等级的日志输出。最后测试是成功的。
+```sh
+[15:44:57][sync_logger][src/test.cc:86][WARNING]  log test from sync_logger_test
+[15:44:57][sync_logger][src/test.cc:87][ERROR]  log test from sync_logger_test
+[15:44:57][sync_logger][src/test.cc:88][FATAL]  log test from sync_logger_test
 ```
 
-However, constructing a logger at this point is very complex, requiring many parameters. Therefore, it needs to be modified to use the builder pattern.
+但此时想要构造一个日志器是非常复杂的，需要传递很多的参数，所以现在需要改造成建造者模式。
 
-The builder code is shown below.
+建造者代码如代码所示。
 
-The test code is shown below.
+测试代码如下所示。
 
 ```cpp
 TEST(all_test, sync_logger_builder_test) {
@@ -405,29 +355,27 @@ TEST(all_test, sync_logger_builder_test) {
 }
 ```
 
-## Asynchronous Logger Module
+## 异步日志器模块
 
-### Double Buffer Design Concept
+### 双缓冲区设计思想
 
-Design Concept: Asynchronous processing thread + data buffer.
+设计思想：异步处理线程+数据缓冲区。
 
-Task Pool Design Concept: Double-buffered blocking data pool
+任务池的设计思想：双缓冲区阻塞数据池
 
-Advantages: Avoids frequent allocation and release of two spaces, and minimizes the probability of lock conflicts between producers and consumers, improving task processing efficiency.
+优势：避免了两空间的频繁申请释放，且尽可能的减少生产者与消费者之间锁冲突的概率，提高了任务处理效率。
 
-In task pool design, there are many alternative solutions, such as circular queues, but all of them involve lock conflicts. In the producer-consumer model, any two roles have a mutual exclusion relationship, so adding and retrieving a task may involve lock conflicts. Double buffers are different. With a double buffer, the processor processes all tasks in one buffer, then swaps the two buffers and reprocesses the tasks in the new buffer. Although simultaneous multi-threaded writes will still cause conflicts, the conflicts are not as frequent as when processing only one task at a time (reducing lock conflicts between producers and consumers), and it avoids the overhead of frequent allocation and release of space.
+在任务池的设计中，有很多备选方案，比如循环队列等等，但不管是哪一种都会涉及到锁冲突的情况，因为在生产者与消费者模型中，任何两个角色都具有互斥关系，因此诶一次的任务添加与取出都有可能涉及锁的冲突。而双缓冲区不同，双缓冲区是处理器将一个缓冲区中的任务全部处理完毕后，然后交换两个缓冲区，重新对新的缓冲区中的任务进行处理，虽然同时多线程写入也会冲突，但是冲突并不会像每次只处理一条的时候频繁（减了生产者与消费者之间的锁冲突），且不涉及到空少间的频繁申请释放所带来的消耗。
 
 ![](../assets/2.png)
 
-### Single Buffer Design
+### 单个缓冲区的设计
 
-1. This buffer directly stores the formatted log message string.
+1. 这个缓冲区直接存放格式化后的日志消息字符串
+2. 当前写入位置的指针（指向可写区域的起始位置，避免数据的写入覆盖）
+3. 当前的读取数据位置的指针（指向可读数据区域的起始位置），当读取指针与写入指针指向相同的位置表示数据取完了
 
-2. A pointer to the current write position (pointing to the beginning of the writable area to prevent data overwriting).
-
-3. A pointer to the current read position (pointing to the beginning of the readable data area). When the read and write pointers point to the same position, it means the data has been retrieved.
-
-First, test the functionality of the single buffer.
+先测试单个缓冲区的功能
 
 ```cpp
 TEST(all_test, single_buffer_test) {
@@ -470,9 +418,9 @@ TEST(all_test, single_buffer_test) {
     ofs.close();
 ```
 
-**Idea:** Read file data, write it bit by bit to a buffer, and finally write the buffer data to the file. Then, check if the new file matches the original file.
+**思想：读取文件数据，一点一点写入缓冲区，最终将缓冲区数据写入文件，判断生成的新文件与源文件是否一致**
 
-### Asynchronous Thread Implementation
+### 异步线程实现
 
 ```cpp
 namespace ffengc_log {
@@ -539,9 +487,9 @@ private:
 } // namespace ffengc_log
 ```
 
-Then you can work on improving the async logger.
+然后就可以去完善 async 的 logger 了。
 
-Perform testing.
+进行测试。
 
 ```cpp
 TEST(all_test, async_log_test) {
@@ -568,21 +516,19 @@ TEST(all_test, async_log_test) {
 }
 ```
 
-Observe whether the asynchronous worker can actually write these 500,000 data entries.
+观察异步工作器是否能真正写入这 500000 条数据。
 
-## Creating a Logger Manager
+## 建立日志器管理器
 
-- Manage all created loggers
+- 对所有创建的日志器进行管理
+- 将管理器设置为单例模式
+- 可以在程序的任意位置获取相同的单例对象，获取其中的日志器进行日志输出
+- 拓展：单例管理器创建的时候，默认先创建一个stdout的日志器
 
-- Set the manager to singleton mode
 
-- You can retrieve the same singleton object from anywhere in the program and use its logger for log output.
+编写完单例的日志器管理器之后，就可以完善 `globalLoggerBuilder` 类了，其实操作和 local 的没有什么区别，只需要把创建好的 `logger` 添加到单例的管理中即可。
 
-- Extension: When the singleton manager is created, it will first create a stdout logger by default.
-
-After writing the singleton logger manager, you can complete the `globalLoggerBuilder` class. The operation is essentially the same as the local one; you just need to add the created `logger` to the singleton manager.
-
-Testing:
+进行测试：
 
 ```cpp
 void test_log() {
@@ -606,28 +552,25 @@ TEST(all_test, globalLoggerBuilder) {
     test_log();
 }
 ```
-Create a `logger` in one scope and use it in another.
+在一个作用域创建 `logger`, 在另一个作用域使用这个 `logger`。
 
-## Global Interface Design (Proxy Pattern)
+## 全局接口设计（代理模式）
 
-Create a `.h` file for users to use.
+创建一个 `.h` 文件提供给用户去使用。
 
-## Performance Testing
+## 性能测试
 
-The following is a performance test of the logging system to measure the average number of log entries printed per second.
+下面对日志系统做一个性能测试，测试一下平均每秒能打印多少条日志文件到文件。
 
-**Main Test Method:** Log entries printed per second = Total number of log entries printed / Total printing time
+**主要测试的方法是:** 每秒能打印日志数 = 打印日志总数 / 总的打印消耗时间
 
-**Main Test Elements:** Synchronous/Asynchronous & Single-threaded/Multi-threaded
+**主要测试要素:** 同步/异步 & 单线程/多线程
+- 100+条指定长度的日志输出所耗时间
+- 每秒可以输出多少条日志
+- 每秒可以输出多少MB日志
 
-- Time taken to output 100+ log entries of a specified length
+**测试环境:**
 
-- Number of log entries output per second
+Ubuntu22.04 VirtualHost 内存2G CPU双核
 
-- Number of MB of logs output per second
-
-**Test Environment:**
-
-Ubuntu 22.04 VirtualHost, 2GB RAM, Dual-core CPU
-
-See the `bench` directory for the specific code, and the README file for the specific test results.
+具体代码见 `bench` 目录，具体测试结果，见 README 文件。
