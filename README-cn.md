@@ -63,7 +63,7 @@ C++ version of synchronous &amp; asynchronous logging system based on multiple d
 
 细节上的实现见以下文档:
 
-- [word.md](./docs/work.md)
+- [word.md](./docs/work-cn.md)
 
 ## 一些想法
 

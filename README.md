@@ -63,7 +63,7 @@ The specific structure of the project is shown below.
 
 For detailed implementation, see the following documents:
 
-- [word.md](./docs/work.md) (Chinese Only)
+- [word.md](./docs/work.md)
 
 ## Some ideas
 
